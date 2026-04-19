@@ -145,12 +145,22 @@ export function Graph(props) {
         }, [width, height])
 
 
-        return <svg 
-            viewBox={`0 0 ${svg_width} ${svg_height}`}
-            preserveAspectRatio="xMidYMid meet"
-            style={{ width: "100%", height: "100%" }}
-            > 
-                <g ref={d3Selection} transform={`translate(${margin.left}, ${margin.top})`}>
-                </g>
+        return (
+            <svg
+                viewBox={`0 0 ${svg_width} ${svg_height}`}
+                preserveAspectRatio="xMidYMid meet"
+                style={{
+                    width: "100%",
+                    maxWidth: "100%",
+                    height: "auto",
+                    aspectRatio: `${svg_width} / ${svg_height}`,
+                    display: "block",
+                }}
+            >
+                <g
+                    ref={d3Selection}
+                    transform={`translate(${margin.left}, ${margin.top})`}
+                />
             </svg>
-    };
+        );
+}

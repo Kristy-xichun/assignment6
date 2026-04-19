@@ -170,7 +170,13 @@ export function TreeMap(props) {
         <svg
             viewBox={`0 0 ${svg_width} ${svg_height}`}
             preserveAspectRatio="xMidYMid meet"
-            style={{ width: "100%", height: "100%" }}
+            style={{
+                width: "100%",
+                maxWidth: "100%",
+                height: "auto",
+                aspectRatio: `${svg_width} / ${svg_height}`,
+                display: "block",
+            }}
         >
             <g
                 ref={gRef}
