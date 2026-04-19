@@ -2,8 +2,9 @@ import { useEffect, useRef, useId } from "react";
 import * as d3 from "d3";
 
 /**
- * Lab 10 / Titanic-style treemap: innerWidth/innerHeight, d3.treemap, schemeDark2,
- * rects + labels (attribute field, category, count). Responsive <svg> per assignment.
+ * Lab 10 / Titanic-style treemap (Bonus Q1.1): innerWidth/innerHeight, d3.treemap,
+ * schemeDark2, rects + labels. Outer wrapper gives height so assignment SVG style
+ * `height: "100%"` resolves (Bootstrap cols often have no intrinsic height).
  */
 
 function cellKey(d) {
@@ -167,21 +168,23 @@ export function TreeMap(props) {
     ]);
 
     return (
-        <svg
-            viewBox={`0 0 ${svg_width} ${svg_height}`}
-            preserveAspectRatio="xMidYMid meet"
+        <div
             style={{
                 width: "100%",
                 maxWidth: "100%",
-                height: "auto",
-                aspectRatio: `${svg_width} / ${svg_height}`,
-                display: "block",
+                height: svg_height,
             }}
         >
-            <g
-                ref={gRef}
-                transform={`translate(${margin.left},${margin.top})`}
-            />
-        </svg>
+            <svg
+                viewBox={`0 0 ${svg_width} ${svg_height}`}
+                preserveAspectRatio="xMidYMid meet"
+                style={{ width: "100%", height: "100%" }}
+            >
+                <g
+                    ref={gRef}
+                    transform={`translate(${margin.left},${margin.top})`}
+                />
+            </svg>
+        </div>
     );
 }
