@@ -1,10 +1,10 @@
-import { useEffect, useRef, useId } from "react";
+import { useMemo, useId } from "react";
 import * as d3 from "d3";
 
 /**
- * Lab 10 / Titanic-style treemap (Bonus Q1.1): innerWidth/innerHeight, d3.treemap,
- * schemeDark2, rects + labels. Outer wrapper gives height so assignment SVG style
- * `height: "100%"` resolves (Bootstrap cols often have no intrinsic height).
+ * Bonus Q1.1 — Lab 10 style treemap (matches course reference layout):
+ * innerWidth/innerHeight, d3.treemap(), schemeDark2, rects,
+ * multi-line labels: full path attr:value + Value (React <Text>).
  */
 
 function cellKey(d) {
@@ -15,78 +15,87 @@ function cellKey(d) {
         .join(" / ");
 }
 
-/** SVG <text> with tspans — attribute label + numeric value (Q1.1). */
-function appendCellText(textRoot, lines, w) {
-    const text = textRoot
-        .append("text")
-        .attr("text-anchor", "middle")
-        .attr("dominant-baseline", "middle")
-        .style("font-size", w < 80 ? "10px" : "12px")
-        .style("fill", "#fff")
-        .style("paint-order", "stroke")
-        .style("stroke", "rgba(0,0,0,0.35)")
-        .style("stroke-width", "3px");
-
-    if (lines.length === 1) {
-        text.text(lines[0]);
-        return;
-    }
-
-    text.append("tspan")
-        .attr("x", 0)
-        .attr("dy", lines.length > 2 ? "-0.9em" : "-0.55em")
-        .text(lines[0]);
-
-    for (let i = 1; i < lines.length; i += 1) {
-        const isLast = i === lines.length - 1;
-        text.append("tspan")
-            .attr("x", 0)
-            .attr("dy", "1.05em")
-            .style("font-size", isLast ? "10px" : "11px")
-            .style("fill", isLast ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.95)")
-            .text(lines[i]);
-    }
+/** Full path from root→leaf: each level "attr: name", then Value: count */
+function pathLabelLines(d, fmt) {
+    const chain = d
+        .ancestors()
+        .filter((n) => n.depth > 0)
+        .reverse();
+    const lines = chain.map((n) => {
+        const { attr, name } = n.data;
+        return attr != null ? `${attr}: ${name}` : String(name);
+    });
+    lines.push(`Value: ${fmt(d.value)}`);
+    return lines;
 }
 
-/** First line: "attr: category" (Titanic-style encoding); then optional middle line; last = count. */
-function labelLinesForLeaf(d, fmt) {
-    const { name, attr } = d.data;
-    const line1 =
-        attr != null && String(attr).length > 0
-            ? `${attr}: ${name}`
-            : String(name);
-    const countStr = fmt(d.value);
-    return [line1, countStr];
+/**
+ * Q1.1 — text block inside each rectangle (attributes + values).
+ */
+function Text({ lines, cellWidth, cellHeight, narrow }) {
+    const fontSize = Math.max(
+        7,
+        Math.min(11, Math.min(cellWidth, cellHeight) / 14)
+    );
+    const lineHeight = fontSize * 1.2;
+
+    const textProps = {
+        fill: "#fff",
+        fontSize,
+        paintOrder: "stroke",
+        stroke: "rgba(0,0,0,0.45)",
+        strokeWidth: fontSize * 0.08,
+        style: { fontFamily: "system-ui, sans-serif" },
+    };
+
+    if (narrow) {
+        return (
+            <text
+                textAnchor="start"
+                transform={`translate(${cellWidth - 8}, ${8}) rotate(90)`}
+                {...textProps}
+            >
+                {lines.map((line, i) => (
+                    <tspan key={i} x={0} dy={i === 0 ? 0 : lineHeight}>
+                        {line}
+                    </tspan>
+                ))}
+            </text>
+        );
+    }
+
+    return (
+        <text x={6} y={fontSize + 4} textAnchor="start" {...textProps}>
+            {lines.map((line, i) => (
+                <tspan key={i} x={6} dy={i === 0 ? 0 : lineHeight}>
+                    {line}
+                </tspan>
+            ))}
+        </text>
+    );
 }
 
 export function TreeMap(props) {
     const { margin, svg_width, svg_height, tree, selectedCell, setSelectedCell } =
         props;
 
-    const gRef = useRef(null);
     const clipIdPrefix = useId().replace(/:/g, "");
 
     const innerWidth = svg_width - margin.left - margin.right;
     const innerHeight = svg_height - margin.top - margin.bottom;
 
-    useEffect(() => {
-        const g = d3.select(gRef.current);
-        g.selectAll("*").remove();
+    const fmt = useMemo(() => d3.format(","), []);
 
+    const { leaves, emptyMessage } = useMemo(() => {
         if (!tree?.children?.length) {
-            g.append("text")
-                .attr("x", innerWidth / 2)
-                .attr("y", innerHeight / 2)
-                .attr("text-anchor", "middle")
-                .attr("dominant-baseline", "middle")
-                .style("font-size", "14px")
-                .style("fill", "#666")
-                .text("Select at least one attribute to show the treemap.");
-            return;
+            return {
+                leaves: [],
+                emptyMessage: "Select at least one attribute to show the treemap.",
+            };
         }
 
         const root = d3
-            .hierarchy(tree)
+            .hierarchy(JSON.parse(JSON.stringify(tree)))
             .sum((d) =>
                 !d.children || d.children.length === 0 ? d.value || 0 : 0
             )
@@ -99,73 +108,10 @@ export function TreeMap(props) {
             .paddingInner(2)
             .round(true)(root);
 
-        const color = d3.scaleOrdinal(d3.schemeDark2);
+        return { leaves: root.leaves(), emptyMessage: null };
+    }, [tree, innerWidth, innerHeight]);
 
-        const leaves = root.leaves();
-        const fmt = d3.format(",");
-
-        const leaf = g
-            .selectAll("g.leaf")
-            .data(leaves)
-            .join("g")
-            .attr("class", "leaf")
-            .attr("transform", (d) => `translate(${d.x0},${d.y0})`);
-
-        leaf.each(function (d, i) {
-            const cell = d3.select(this);
-            const w = d.x1 - d.x0;
-            const h = d.y1 - d.y0;
-            const clipId = `${clipIdPrefix}-c${i}`;
-
-            cell.append("defs")
-                .append("clipPath")
-                .attr("id", clipId)
-                .append("rect")
-                .attr("width", Math.max(0, w))
-                .attr("height", Math.max(0, h));
-
-            cell.append("rect")
-                .attr("width", Math.max(0, w))
-                .attr("height", Math.max(0, h))
-                .attr("fill", () =>
-                    color(d.parent ? d.parent.data.name : d.data.name)
-                )
-                .attr("stroke", () =>
-                    selectedCell === cellKey(d) ? "#f6e05e" : "#fff"
-                )
-                .attr("stroke-width", () =>
-                    selectedCell === cellKey(d) ? 3 : 1
-                )
-                .style("cursor", "pointer")
-                .on("click", (event) => {
-                    event.stopPropagation();
-                    const k = cellKey(d);
-                    setSelectedCell((cur) => (cur === k ? null : k));
-                });
-
-            if (w < 28 || h < 14) return;
-
-            const [attrLine, countStr] = labelLinesForLeaf(d, fmt);
-            const tg = cell
-                .append("g")
-                .attr("pointer-events", "none")
-                .attr("clip-path", `url(#${clipId})`)
-                .attr("transform", `translate(${w / 2},${h / 2})`);
-
-            if (h >= 32) {
-                appendCellText(tg, [attrLine, `n = ${countStr}`], w);
-            } else {
-                appendCellText(tg, [attrLine], w);
-            }
-        });
-    }, [
-        tree,
-        innerWidth,
-        innerHeight,
-        selectedCell,
-        setSelectedCell,
-        clipIdPrefix,
-    ]);
+    const color = useMemo(() => d3.scaleOrdinal(d3.schemeDark2), []);
 
     return (
         <div
@@ -180,10 +126,92 @@ export function TreeMap(props) {
                 preserveAspectRatio="xMidYMid meet"
                 style={{ width: "100%", height: "100%" }}
             >
-                <g
-                    ref={gRef}
-                    transform={`translate(${margin.left},${margin.top})`}
-                />
+                <g transform={`translate(${margin.left},${margin.top})`}>
+                    {emptyMessage ? (
+                        <text
+                            x={innerWidth / 2}
+                            y={innerHeight / 2}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            style={{ fontSize: 14, fill: "#666" }}
+                        >
+                            {emptyMessage}
+                        </text>
+                    ) : (
+                        leaves.map((d, i) => {
+                            const w = Math.max(0, d.x1 - d.x0);
+                            const h = Math.max(0, d.y1 - d.y0);
+                            const clipId = `${clipIdPrefix}-c${i}`;
+                            const key = cellKey(d);
+                            const fill = color(
+                                d.parent ? d.parent.data.name : d.data.name
+                            );
+                            const selected = selectedCell === key;
+                            const lines = pathLabelLines(d, fmt);
+                            const narrow = w < 46 && h > w * 1.5;
+                            const big = w * h > 9000;
+                            const firstLine = lines[0] ?? "";
+
+                            return (
+                                <g
+                                    key={`${key}-${i}`}
+                                    transform={`translate(${d.x0},${d.y0})`}
+                                >
+                                    <defs>
+                                        <clipPath id={clipId}>
+                                            <rect width={w} height={h} />
+                                        </clipPath>
+                                    </defs>
+                                    <rect
+                                        width={w}
+                                        height={h}
+                                        fill={fill}
+                                        stroke={selected ? "#f6e05e" : "#fff"}
+                                        strokeWidth={selected ? 3 : 1}
+                                        style={{ cursor: "pointer" }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedCell((cur) =>
+                                                cur === key ? null : key
+                                            );
+                                        }}
+                                    />
+                                    {big && (
+                                        <text
+                                            x={w / 2}
+                                            y={h * 0.55}
+                                            textAnchor="middle"
+                                            dominantBaseline="middle"
+                                            fill="rgba(255,255,255,0.22)"
+                                            fontSize={Math.min(w, h) * 0.14}
+                                            style={{
+                                                pointerEvents: "none",
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            {firstLine}
+                                        </text>
+                                    )}
+                                    {w >= 20 && h >= 12 ? (
+                                        <g
+                                            pointerEvents="none"
+                                            style={{
+                                                clipPath: `url(#${clipId})`,
+                                            }}
+                                        >
+                                            <Text
+                                                lines={lines}
+                                                cellWidth={w}
+                                                cellHeight={h}
+                                                narrow={narrow}
+                                            />
+                                        </g>
+                                    ) : null}
+                                </g>
+                            );
+                        })
+                    )}
+                </g>
             </svg>
         </div>
     );
