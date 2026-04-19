@@ -9,14 +9,36 @@ import { getTree } from "../utils/getTree";
 
 // The data is from the healthcare dataset.
 const csvUrl = "https://gist.githubusercontent.com/hogwild/a716b6186d730c1d86962e9acaa1e59f/raw/aca017d18e2330668ef2765c5c049f89becda4ac/healthcare_stroke_data.csv";
-function useData(csvPath){
-    const [dataAll, setData] = useState(null);
+function useData(csvPath) {
+    const [state, setState] = useState({
+        loading: true,
+        data: null,
+        error: null,
+    });
     useEffect(() => {
-        d3.csv(csvPath).then(data => {
-            setData(data);
-        });
-    }, []);
-    return dataAll;
+        let cancelled = false;
+        d3.csv(csvPath)
+            .then((rows) => {
+                if (!cancelled) {
+                    setState({ loading: false, data: rows, error: null });
+                }
+            })
+            .catch((err) => {
+                if (!cancelled) {
+                    setState({
+                        loading: false,
+                        data: null,
+                        error:
+                            err?.message ||
+                            "Failed to load CSV (check network / CORS).",
+                    });
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [csvPath]);
+    return state;
 }
 
 const App = () => {
@@ -29,9 +51,23 @@ const App = () => {
     const WIDTH = 600;
     const HEIGHT = 400;
     const margin = { top: 20, right: 40, bottom: 20, left: 40 };
-    const rawData = useData(csvUrl);
-    if (!rawData) {
-        return <p>Loading...</p>
+    const { loading, data: rawData, error } = useData(csvUrl);
+    if (loading) {
+        return <p>Loading data…</p>;
+    }
+    if (error) {
+        return (
+            <Container className="py-4">
+                <p className="text-danger">
+                    Could not load dataset: {error}
+                </p>
+                <p>
+                    Open the browser developer tools → Network tab and reload;
+                    confirm the CSV request to gist.githubusercontent.com
+                    succeeds.
+                </p>
+            </Container>
+        );
     }
     const attributes = [ firstAttr, secondAttr, thirdAttr ].filter( d => d !== "null");
     const onFristAttrChange = ( attr ) => {
@@ -49,7 +85,6 @@ const App = () => {
     const data = rawData.filter(d => d[selectedDisease] === "1");
     // console.log("data:", data);
     const tree_ = getTree(data, attributes);
-    console.log("tree:", tree_);
     const tree = {"name":"root", "children": tree_};
     const options = [{value: "null", label: "None"},{value: "gender", label: "Gender"}, {value: "stroke", label: "Stroke"},
         {value: "heart_disease", label: "Heart Disease"}, {value: "hypertension", label: "Hypertension"}, {value: "ever_married", label: "Ever Married"}];
